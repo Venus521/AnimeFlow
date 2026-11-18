@@ -45,6 +45,9 @@ class PlaybackProgressManager {
   String? subjectName;
   String? subjectCover;
   List<String> alias = [];
+
+  /// 当前播放使用的数据源名称，随播放记录一起落盘。
+  String? sourceWebsite;
   bool isLocalPlayback = false;
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
@@ -57,6 +60,7 @@ class PlaybackProgressManager {
     required String? subjectCover,
     required List<String> alias,
     required bool isLocalPlayback,
+    String? sourceWebsite,
   }) {
     this.subjectId = subjectId;
     this.episodeId = episodeId;
@@ -65,6 +69,11 @@ class PlaybackProgressManager {
     this.subjectCover = subjectCover;
     this.alias = List<String>.from(alias);
     this.isLocalPlayback = isLocalPlayback;
+    this.sourceWebsite = sourceWebsite;
+    // 换集时必须清空上一集的位置与时长。
+    // 否则播放器还没回报新位置时，防抖保存会拿上一集的数值写一条脏记录。
+    position = Duration.zero;
+    duration = Duration.zero;
   }
 
   void updatePlaybackState({
@@ -128,8 +137,7 @@ class PlaybackProgressManager {
     if (duration <= Duration.zero ||
         subjectId <= 0 ||
         episodeId <= 0 ||
-        subjectName == null ||
-        subjectCover == null) {
+        subjectName == null) {
       return;
     }
     final savedPosition = position ?? pendingSeekPosition ?? this.position;
@@ -137,16 +145,25 @@ class PlaybackProgressManager {
             eventType == PlayHistoryEventType.defaults
         ? PlayHistoryEventType.forceOverwrite
         : eventType;
+    // 位置仍为 0 通常说明播放器还没回报位置（刚打开、刚换集）。
+    // 这时落盘会把已有的续播进度抹成 0，所以直接跳过；
+    // 用户显式拖到 0 会走 forceOverwrite，不受此限。
+    if (savedPosition <= Duration.zero &&
+        effectiveEventType != PlayHistoryEventType.forceOverwrite) {
+      return;
+    }
     final playHistory = PlaybackRecord(
       subjectId: subjectId,
       subjectName: subjectName!,
       episodeId: episodeId,
       episodeSort: episodeSort,
-      cover: subjectCover!,
+      // 封面缺失时用空串占位，不再整条丢弃（丢一条等于丢一次续播）。
+      cover: subjectCover ?? '',
       updateAt: DateTime.now(),
       position: savedPosition.inSeconds,
       duration: duration.inSeconds,
       alias: List<String>.from(alias),
+      sourceWebsite: sourceWebsite,
     );
     _saveQueue = _saveQueue.then((_) async {
       try {

@@ -23,6 +23,16 @@ class PlayHistoryService {
         : 0;
   }
 
+  /// 上次播放这一集使用的数据源名称。
+  ///
+  /// 只在该记录确实属于这一集时返回，避免把别的集的站点套过来。
+  Future<String?> resumeSource(int subjectId, int episodeId) async {
+    final record = await repository.getBySubjectId(subjectId);
+    if (record == null || record.episodeId != episodeId) return null;
+    final website = record.sourceWebsite?.trim() ?? '';
+    return website.isEmpty ? null : website;
+  }
+
   Future<void> synchronize({required bool Function() active}) =>
       _synchronizing ??= _queue
           .run(() => _synchronize(active))

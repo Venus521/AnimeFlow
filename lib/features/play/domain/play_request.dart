@@ -29,6 +29,9 @@ class PlayRequest {
   ///剧集id
   final int episodeId;
 
+  /// 本次播放使用的数据源名称；本地播放或未知时为空。
+  final String? sourceWebsite;
+
   final String? localDanmakuPath;
 
   const PlayRequest({
@@ -41,6 +44,7 @@ class PlayRequest {
     required this.subjectName,
     required this.subjectCover,
     required this.alias,
+    this.sourceWebsite,
     this.localDanmakuPath,
   });
 }

@@ -27,13 +27,14 @@ class PlayHistoryAdapter extends TypeAdapter<PlayHistory> {
       duration: (fields[7] as num).toInt(),
       alias: (fields[8] as List).cast<String>(),
       isSyncedToServer: fields[9] == null ? false : fields[9] as bool,
+      sourceWebsite: fields[10] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PlayHistory obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.subjectId)
       ..writeByte(1)
@@ -53,7 +54,9 @@ class PlayHistoryAdapter extends TypeAdapter<PlayHistory> {
       ..writeByte(8)
       ..write(obj.alias)
       ..writeByte(9)
-      ..write(obj.isSyncedToServer);
+      ..write(obj.isSyncedToServer)
+      ..writeByte(10)
+      ..write(obj.sourceWebsite);
   }
 
   @override

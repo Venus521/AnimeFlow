@@ -389,6 +389,7 @@ class PlaySession {
         subjectCover: subjectCover,
         alias: alias,
         isLocalPlayback: isLocalPlayback,
+        sourceWebsite: state.sourceWebsite,
       );
       await playbackCoordinator.open(
         state.source,

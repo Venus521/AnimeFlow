@@ -36,6 +36,7 @@ class HivePlayHistoryRepository implements PlayHistoryRepository {
         duration: row.duration,
         alias: List.unmodifiable(row.alias),
         isSyncedToServer: row.isSyncedToServer,
+        sourceWebsite: row.sourceWebsite,
       );
 
   @override
@@ -51,6 +52,7 @@ class HivePlayHistoryRepository implements PlayHistoryRepository {
       position: record.position,
       duration: record.duration,
       alias: record.alias,
+      sourceWebsite: record.sourceWebsite,
     );
 
     playHistory.isSyncedToServer = false;
@@ -167,6 +169,8 @@ class HivePlayHistoryRepository implements PlayHistoryRepository {
         duration: remote.durationSeconds,
         updateAt: remote.lastPlayedAt,
         isSyncedToServer: true,
+        // 服务器不保存数据源，拉取时保留本地已记录的站点，避免续播退化成随机换源。
+        sourceWebsite: local?.sourceWebsite,
       );
       await playHistoryStorage.put(history.subjectId, history);
       if (local == null) {

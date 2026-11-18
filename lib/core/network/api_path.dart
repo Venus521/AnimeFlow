@@ -78,9 +78,9 @@ class CommonApi {
 
       ghProxy = 'gh-proxy.org',
 
-      ///插件仓库
+      ///插件仓库（Venus521/animeflow-rules：官方 14 条 + Kazumi 转换 7 条，每日自动同步）
       pluginRepo =
-          'https://raw.githubusercontent.com/openAnimeFlow/animeFlow-assets/main/plugins',
+          'https://raw.githubusercontent.com/Venus521/animeflow-rules/main/plugins',
 
       /// 字体仓库
       fontRepo =

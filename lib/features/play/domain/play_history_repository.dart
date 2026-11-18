@@ -31,6 +31,9 @@ class PlaybackRecord {
   /// 是否已同步到服务器。
   final bool isSyncedToServer;
 
+  /// 上次播放使用的数据源名称；为空表示旧记录、本地播放或未知。
+  final String? sourceWebsite;
+
   bool acceptsRemoteUpdate(DateTime remoteTime) =>
       isSyncedToServer && remoteTime.isAfter(updateAt);
 
@@ -45,6 +48,7 @@ class PlaybackRecord {
     required this.duration,
     required this.alias,
     this.isSyncedToServer = false,
+    this.sourceWebsite,
   });
 }
 

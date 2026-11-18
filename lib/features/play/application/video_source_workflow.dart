@@ -116,6 +116,18 @@ mixin VideoSourceWorkflow {
           keepSelection ? state.selectedPlaybackSource : null,
     );
 
+    // 续播时优先回到上次用的站点。
+    // 不同站点的片头、剪辑和总时长可能不同，换源之后同一个秒数往往对不上，
+    // 表现就是「续播了但看起来没续播」。
+    if (!keepSelection) {
+      final preferredWebsite =
+          await history.resumeSource(subject.subjectId, episode.id);
+      if (!active || _searchSessionId != sessionId) return;
+      if (preferredWebsite != null) {
+        _preferredAutoSelectWebsiteName = preferredWebsite;
+      }
+    }
+
     final eligibleConfigs = <PlayWebsite>[];
     for (final config in configs) {
       if (config.antiCrawlerConfig.enabled) {
@@ -715,6 +727,10 @@ mixin VideoSourceWorkflow {
           episodeSort: selectedEpisode.sort,
           alias: selectedSubject.subjectAliases,
           episodeId: selectedEpisode.id,
+          sourceWebsite: switch (source) {
+            OnlineEpisodeSource(:final selection) => selection.websiteName,
+            LocalVideoFile() => null,
+          },
         );
       }, shouldUseResult: isCurrent);
     } on VideoSourceCancelledException {

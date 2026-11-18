@@ -44,6 +44,13 @@ class PlayHistory extends HiveObject {
   @HiveField(9)
   bool isSyncedToServer;
 
+  /// 上次播放使用的数据源名称。
+  ///
+  /// 为空表示旧记录或本地播放。续播时优先用这个站点，
+  /// 避免换到别的源之后进度对不上（不同站点的片头/剪辑可能不同）。
+  @HiveField(10)
+  String? sourceWebsite;
+
   PlayHistory({
     required this.subjectId,
     required this.episodeId,
@@ -55,5 +62,6 @@ class PlayHistory extends HiveObject {
     required this.duration,
     required this.alias,
     this.isSyncedToServer = false,
+    this.sourceWebsite,
   });
 }
