@@ -14,6 +14,13 @@ class PlayHistoryService {
     ..sort((a, b) => b.updateAt.compareTo(a.updateAt));
   Stream<void> get changes => repository.changes;
 
+  /// 该条目的本地播放记录，没有则返回 null。
+  ///
+  /// 播放页在路由没有指定集数时用它决定「从第几集开始」，
+  /// 避免退化成每次都从第一集播。
+  Future<PlaybackRecord?> recordFor(int subjectId) =>
+      repository.getBySubjectId(subjectId);
+
   Future<int> resumePosition(
     int subjectId,
     int episodeId, {
@@ -22,8 +29,12 @@ class PlayHistoryService {
     final record = await repository.getBySubjectId(subjectId);
     if (record == null) return 0;
     // 集 ID 失效时按集数兜底，避免「明明看过第 N 集却从第一集开始」。
+    // 集数为 0 的记录不可信（旧数据/本地文件），不能拿来比对，
+    // 否则会误判成同一集，把别的集进度套过来。
     final sameEpisode = record.episodeId == episodeId ||
-        (episodeSort != null && record.episodeSort == episodeSort);
+        (episodeSort != null &&
+            episodeSort > 0 &&
+            record.episodeSort == episodeSort);
     return sameEpisode && record.position > 0 ? record.position : 0;
   }
 
@@ -38,7 +49,9 @@ class PlayHistoryService {
     final record = await repository.getBySubjectId(subjectId);
     if (record == null) return null;
     final sameEpisode = record.episodeId == episodeId ||
-        (episodeSort != null && record.episodeSort == episodeSort);
+        (episodeSort != null &&
+            episodeSort > 0 &&
+            record.episodeSort == episodeSort);
     if (!sameEpisode) return null;
     final website = record.sourceWebsite?.trim() ?? '';
     return website.isEmpty ? null : website;

@@ -153,17 +153,22 @@ class PlayEpisodeSelection {
     required int? continueEpisodeId,
     int? continueEpisodeSort,
   }) {
+    // 集数为 0 的记录不可信（旧数据、本地文件），不参与定位。
+    final validSort =
+        continueEpisodeSort != null && continueEpisodeSort > 0
+            ? continueEpisodeSort
+            : null;
     if (continueEpisodeId != null) {
       final byId = subjectEpisodes.findSelectionById(continueEpisodeId);
       if (byId != null) return byId;
     }
     // 集 ID 失效（条目剧集表变动、旧版本记录）时按集数兜底，
     // 否则会静默退回第一集，看起来就像「续播没生效」。
-    if (continueEpisodeSort != null) {
-      final bySort = subjectEpisodes.findSelectionBySort(continueEpisodeSort);
+    if (validSort != null) {
+      final bySort = subjectEpisodes.findSelectionBySort(validSort);
       if (bySort != null) return bySort;
     }
-    if (continueEpisodeId != null || continueEpisodeSort != null) {
+    if (continueEpisodeId != null || validSort != null) {
       return null;
     }
     return subjectEpisodes.selectionForContinueEpisode();

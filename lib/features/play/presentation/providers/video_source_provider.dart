@@ -44,9 +44,13 @@ class VideoSourceNotifier extends _$VideoSourceNotifier
   @override
   SourceEpisode get episode {
     final data = ref.read(episodesProvider).asData?.value;
+    final index = data?.episodeIndex ?? 0;
+    final sort = data?.episodeSort.toInt() ?? 0;
     return (
-      index: data?.episodeIndex ?? 0,
-      sort: data?.episodeSort.toInt() ?? 0,
+      index: index,
+      // sort 缺失时用序号兜底。部分数据源不提供集数，
+      // 直接存 0 会让播放记录失去「第几集」这个定位依据。
+      sort: sort > 0 ? sort : index,
       id: data?.episodeId ?? 0
     );
   }

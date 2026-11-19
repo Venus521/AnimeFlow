@@ -239,7 +239,10 @@ class _PlayRecordViewState extends ConsumerState<PlayRecordView> {
                                                             subjectAliases:
                                                                 history.alias),
                                                         continueEpisodeId:
-                                                            history.episodeId));
+                                                            history.episodeId,
+                                                        continueEpisodeSort:
+                                                            history
+                                                                .episodeSort));
                                               },
                                               child: const Icon(
                                                 Icons.play_circle,
