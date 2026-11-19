@@ -313,7 +313,10 @@ class _PlayRecordPageState extends ConsumerState<PlayRecordPage> {
                                                           playHistory.alias,
                                                     ),
                                                     continueEpisodeId:
-                                                        playHistory.episodeId));
+                                                        playHistory.episodeId,
+                                                    continueEpisodeSort:
+                                                        playHistory
+                                                            .episodeSort));
                                           },
                                           child: Text(
                                             l10n.playEpisode(

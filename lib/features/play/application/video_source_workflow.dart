@@ -120,8 +120,9 @@ mixin VideoSourceWorkflow {
     // 不同站点的片头、剪辑和总时长可能不同，换源之后同一个秒数往往对不上，
     // 表现就是「续播了但看起来没续播」。
     if (!keepSelection) {
-      final preferredWebsite =
-          await history.resumeSource(subject.subjectId, episode.id);
+      final preferredWebsite = await history.resumeSource(
+          subject.subjectId, episode.id,
+          episodeSort: episode.sort);
       if (!active || _searchSessionId != sessionId) return;
       if (preferredWebsite != null) {
         _preferredAutoSelectWebsiteName = preferredWebsite;
@@ -782,7 +783,8 @@ mixin VideoSourceWorkflow {
     setPlaybackPhase(PlaybackPhase.resolving,
         notice: PlaybackNotice.resolvingSource);
     final offset = await history.resumePosition(
-        selectedSubject.subjectId, selectedEpisode.id);
+        selectedSubject.subjectId, selectedEpisode.id,
+        episodeSort: selectedEpisode.sort);
     if (!isCurrent()) return null;
     final source = await resolver.resolve(VideoSourceResolveRequest(
       episodeUrl: url,

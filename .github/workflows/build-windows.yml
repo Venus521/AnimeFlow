@@ -30,10 +30,13 @@ jobs:
 
       - name: Build Windows
         shell: pwsh
+        env:
+          ANIME_FLOW_APP_ID: ${{ secrets.ANIME_FLOW_APP_ID }}
+          ANIME_FLOW_SECRET: ${{ secrets.ANIME_FLOW_SECRET }}
         run: |
           flutter build windows --release `
-            --dart-define=ANIME_FLOW_APP_ID= `
-            --dart-define=ANIME_FLOW_SECRET=
+            --dart-define=ANIME_FLOW_APP_ID=$env:ANIME_FLOW_APP_ID `
+            --dart-define=ANIME_FLOW_SECRET=$env:ANIME_FLOW_SECRET
 
       - name: Create ZIP
         shell: pwsh

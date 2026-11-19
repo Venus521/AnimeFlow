@@ -85,8 +85,9 @@ class PlayEpisodeSelection {
     int subjectId,
     SubjectEpisodesState subjectEpisodes,
     int? continueEpisodeId,
-    EpisodesData? current,
-  ) {
+    EpisodesData? current, {
+    int? continueEpisodeSort,
+  }) {
     final episodes = subjectEpisodes.episodes;
     final data = EpisodesData(
       subjectId: subjectId,
@@ -111,6 +112,7 @@ class PlayEpisodeSelection {
             _selectionForContinueEpisode(
               subjectEpisodes,
               continueEpisodeId: continueEpisodeId,
+              continueEpisodeSort: continueEpisodeSort,
             )
         : _findSelectedEpisode(
               subjectEpisodes,
@@ -119,6 +121,7 @@ class PlayEpisodeSelection {
             _selectionForContinueEpisode(
               subjectEpisodes,
               continueEpisodeId: continueEpisodeId,
+              continueEpisodeSort: continueEpisodeSort,
             );
     if (selection == null) {
       return data;
@@ -148,9 +151,20 @@ class PlayEpisodeSelection {
   EpisodeSelection? _selectionForContinueEpisode(
     SubjectEpisodesState subjectEpisodes, {
     required int? continueEpisodeId,
+    int? continueEpisodeSort,
   }) {
     if (continueEpisodeId != null) {
-      return subjectEpisodes.findSelectionById(continueEpisodeId);
+      final byId = subjectEpisodes.findSelectionById(continueEpisodeId);
+      if (byId != null) return byId;
+    }
+    // 集 ID 失效（条目剧集表变动、旧版本记录）时按集数兜底，
+    // 否则会静默退回第一集，看起来就像「续播没生效」。
+    if (continueEpisodeSort != null) {
+      final bySort = subjectEpisodes.findSelectionBySort(continueEpisodeSort);
+      if (bySort != null) return bySort;
+    }
+    if (continueEpisodeId != null || continueEpisodeSort != null) {
+      return null;
     }
     return subjectEpisodes.selectionForContinueEpisode();
   }

@@ -41,7 +41,8 @@ class Episodes extends _$Episodes implements EpisodeActions {
       _ => await ref.watch(subjectEpisodesProvider(subjectId).future),
     };
     return selection.onlineEpisodes(
-        subjectId, subjectEpisodes, requestedEpisodeId, _currentData);
+        subjectId, subjectEpisodes, requestedEpisodeId, _currentData,
+        continueEpisodeSort: extra.continueEpisodeSort);
   }
 
   /// 通过条目剧集列表的统一入口更新观看状态，复用生命周期与会话保护。

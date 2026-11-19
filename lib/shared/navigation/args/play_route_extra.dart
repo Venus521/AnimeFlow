@@ -5,6 +5,9 @@ import 'package:anime_flow/shared/models/bangumi/subjects_info_item.dart';
 class PlayRouteExtra {
   final PlayExtra playExtra;
   final int? continueEpisodeId;
+
+  /// 续播记录的集数。集 ID 失效时用它兜底定位，避免退回第一集。
+  final int? continueEpisodeSort;
   final bool isOfflineMode;
   final String? offlineMediaPath;
   final String? offlineDanmakuPath;
@@ -15,6 +18,7 @@ class PlayRouteExtra {
   const PlayRouteExtra({
     required this.playExtra,
     this.continueEpisodeId,
+    this.continueEpisodeSort,
     this.isOfflineMode = false,
     this.offlineMediaPath,
     this.offlineDanmakuPath,

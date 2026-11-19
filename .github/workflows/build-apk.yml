@@ -35,10 +35,13 @@ jobs:
         run: flutter pub get
 
       - name: Build APK (debug sign)
+        env:
+          ANIME_FLOW_APP_ID: ${{ secrets.ANIME_FLOW_APP_ID }}
+          ANIME_FLOW_SECRET: ${{ secrets.ANIME_FLOW_SECRET }}
         run: |
           flutter build apk --release --split-per-abi \
-            --dart-define=ANIME_FLOW_APP_ID= \
-            --dart-define=ANIME_FLOW_SECRET=
+            --dart-define=ANIME_FLOW_APP_ID="$ANIME_FLOW_APP_ID" \
+            --dart-define=ANIME_FLOW_SECRET="$ANIME_FLOW_SECRET"
 
       - name: List artifacts
         run: ls -lh build/app/outputs/flutter-apk/*.apk

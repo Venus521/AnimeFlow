@@ -76,6 +76,24 @@ class SubjectEpisodesState {
     return null;
   }
 
+  /// 按集数（sort）查找剧集。
+  ///
+  /// 续播兜底用：历史记录里的集 ID 可能因为条目剧集表变化而失效，
+  /// 但「第几集」是稳定的，用它能把用户送回正确的那一集，
+  /// 而不是静默退回第一集。
+  EpisodeSelection? findSelectionBySort(num sort) {
+    for (var i = 0; i < episodes.data.length; i++) {
+      final episode = episodes.data[i];
+      if (episode.sort == sort) {
+        return _buildEpisodeSelection(
+          episode: episode,
+          index: i + 1,
+        );
+      }
+    }
+    return null;
+  }
+
   bool hasNextEpisode(int currentEpisodeIndex, {bool requireAired = true}) {
     return nextEpisodeSelection(currentEpisodeIndex,
             requireAired: requireAired) !=
