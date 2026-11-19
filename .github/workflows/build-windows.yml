@@ -1,0 +1,51 @@
+name: Build Windows ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows desktop (no secrets required)
+    runs-on: windows-2025
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Show versions
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        shell: pwsh
+        run: |
+          flutter build windows --release `
+            --dart-define=ANIME_FLOW_APP_ID= `
+            --dart-define=ANIME_FLOW_SECRET=
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path pubspec.yaml -Pattern '^version:' | ForEach-Object { $_.Line -replace 'version: ', '' }).Trim()
+          $zip = "AnimeFlow-windows-$v.zip"
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath $zip -Force
+          echo "Created $zip"
+          Get-Item $zip | Select-Object Name,Length
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: animeflow-windows
+          path: AnimeFlow-windows-*.zip
+          if-no-files-found: error
