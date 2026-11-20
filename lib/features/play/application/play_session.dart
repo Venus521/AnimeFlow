@@ -384,7 +384,9 @@ class PlaySession {
       playbackProgressManager.setPlaybackContext(
         subjectId: subjectId,
         episodeId: episodeId,
-        episodeSort: episodeSort,
+        // 集数拿不到时用播放序号兜底（1 起算）。记录里一旦写进 0，
+        // 续播比对就永远对不上，这条记录等于废掉，所以这里必须给个真值。
+        episodeSort: episodeSort > 0 ? episodeSort : episode,
         subjectName: subjectName,
         subjectCover: subjectCover,
         alias: alias,

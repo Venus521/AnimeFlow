@@ -33,27 +33,17 @@ class Episodes extends _$Episodes implements EpisodeActions {
     // 路由没带集数时（详情页大播放按钮、首页「继续观看」卡片等入口），
     // 回落到本地播放记录。不回落到这里的话，下面会一路退成
     // 「没指定剧集 → 默认第一集」，表现就是每次进来都从第一集开始。
-    final hintFromRecord =
-        requestedEpisodeId == null && requestedEpisodeSort == null;
-    if (requestedEpisodeId == null || requestedEpisodeSort == null) {
-      final routeEpisodeId = requestedEpisodeId;
-      final record =
-          await ref.read(playHistoryServiceProvider).recordFor(subjectId);
-      if (!ref.mounted) return EpisodesData(subjectId: subjectId);
-      if (record != null) {
-        if (routeEpisodeId == null) {
-          requestedEpisodeId = record.episodeId > 0 ? record.episodeId : null;
-        }
-        // 只有记录说的确实是同一集时，才借用它的集数。
-        // 否则（用户点了别的集）会把进度带到错误的集上。
-        final sameEpisode =
-            routeEpisodeId == null || record.episodeId == routeEpisodeId;
-        if (requestedEpisodeSort == null &&
-            sameEpisode &&
-            record.episodeSort > 0) {
-          requestedEpisodeSort = record.episodeSort;
-        }
-      }
+    // 注意：记录卡、详情页、历史入口都会传 continueEpisodeId，
+    // 所以「两个参数都为 null」这种判断等于永远不成立（上一版就死在这里）。
+    // 这里改成无条件读一次记录，供下面两级兜底使用。
+    final routeEpisodeId = requestedEpisodeId;
+    final record =
+        await ref.read(playHistoryServiceProvider).recordFor(subjectId);
+    if (!ref.mounted) return EpisodesData(subjectId: subjectId);
+    if (record != null && routeEpisodeId == null) {
+      // 路由什么都没说（大播放按钮等入口）：记录说哪一集就是哪一集。
+      if (record.episodeId > 0) requestedEpisodeId = record.episodeId;
+      if (record.episodeSort > 0) requestedEpisodeSort = record.episodeSort;
     }
 
     selection.request(subjectId, requestedEpisodeId);
@@ -69,13 +59,29 @@ class Episodes extends _$Episodes implements EpisodeActions {
         Error.throwWithStackTrace(error, stackTrace),
       _ => await ref.watch(subjectEpisodesProvider(subjectId).future),
     };
-    final data = selection.onlineEpisodes(
+    var data = selection.onlineEpisodes(
         subjectId, subjectEpisodes, requestedEpisodeId, _currentData,
         continueEpisodeSort: requestedEpisodeSort);
-    // 记录里的集数对不上（条目剧集表变了、集数超出已加载范围）时，
-    // 退回原来的「下一集未看」逻辑，至少不会停在空选集上。
-    if (hintFromRecord && data.episodeId <= 0) {
-      return selection.onlineEpisodes(subjectId, subjectEpisodes, null, null);
+
+    // 一级兜底：路由给的集 ID 在剧集表里找不到（换过源、旧记录、剧集表变动），
+    // 选集会退成「没有集」= episodeId 0，播放页随后自己退回第一集，
+    // 于是把 1 写进记录 —— 这就是「永远显示 01、续播永远失效」的自我强化环。
+    // 这里改用记录里的集数再定位一次，集数比集 ID 耐得住剧集表变动。
+    if (data.episodeId <= 0 && record != null && record.episodeSort > 0) {
+      final byRecordSort = selection.onlineEpisodes(
+        subjectId,
+        subjectEpisodes,
+        null,
+        null,
+        continueEpisodeSort: record.episodeSort,
+      );
+      if (byRecordSort.episodeId > 0) data = byRecordSort;
+    }
+
+    // 二级兜底：仍然没有有效集，退回「下一集未看 / 第一集」，
+    // 至少保证播放页拿得到一个真实存在的集，不会再写进 0 或空值。
+    if (data.episodeId <= 0) {
+      data = selection.onlineEpisodes(subjectId, subjectEpisodes, null, null);
     }
     return data;
   }
