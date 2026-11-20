@@ -1,4 +1,7 @@
 import 'package:anime_flow/features/app_update/application/apply_updates_factory.dart';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:anime_flow/features/app_update/application/app_info_state.dart';
 import 'package:anime_flow/features/app_update/application/apply_updates_controller.dart';
 import 'package:anime_flow/core/network/api/flow_api.dart';
@@ -57,6 +60,41 @@ class AppInfo extends _$AppInfo {
     state = state.copyWith(clearPendingStartupVersionResult: true);
   }
 
+  /// 从自己的 GitHub Releases 读最新版本。
+  ///
+  /// 直连 api.github.com 不通时改走 gh-proxy；两个都不行就返回 null，
+  /// 由调用方退回原接口。这样更新通道永远不会「一条路死了就全死」。
+  Future<GithubRelease?> _fetchOwnRelease() async {
+    const path = 'repos/Venus521/AnimeFlow/releases/latest';
+    final urls = <String>[
+      'https://api.github.com/$path',
+      'https://gh-proxy.org/https://api.github.com/$path',
+    ];
+    for (final url in urls) {
+      try {
+        final response = await http.get(
+          Uri.parse(url),
+          headers: const {
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'AnimeFlow-Android',
+          },
+        ).timeout(const Duration(seconds: 12));
+        if (response.statusCode != 200) continue;
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is! Map) continue;
+        final release = GithubRelease.fromJson(
+          Map<String, dynamic>.from(decoded),
+        );
+        if (release.tagName.isNotEmpty && release.assets.isNotEmpty) {
+          return release;
+        }
+      } catch (e) {
+        LiggLogger().w('自建更新源不可用：$url → $e');
+      }
+    }
+    return null;
+  }
+
   Future<void> _loadPackageInfo() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -71,7 +109,11 @@ class AppInfo extends _$AppInfo {
 
   Future<VersionCheckResult> checkVersion() async {
     try {
-      final release = await FlowApi.getLatestRelease();
+      // 优先用自建更新源（自己的 GitHub Releases）。作者服务器那把密钥
+      // 随时可能失效，但「能不能推送新版本」这件事不能依赖别人，
+      // 否则以后就再也升级不动了。取不到时再退回原接口。
+      final release = await _fetchOwnRelease() ??
+          await FlowApi.getLatestRelease();
       final remoteVersion = release.tagName;
       if (remoteVersion.isEmpty) {
         return const VersionCheckResult(type: VersionType.localNewer);
