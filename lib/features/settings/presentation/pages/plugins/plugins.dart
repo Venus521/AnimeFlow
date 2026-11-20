@@ -1,7 +1,11 @@
 import 'package:anime_flow/shared/widgets/adaptive_app_bar.dart';
 import 'package:anime_flow/features/settings/presentation/widgets/settings_page_builder.dart';
 import 'package:anime_flow/shared/navigation/settings_destination.dart';
+import 'dart:convert';
 import 'dart:math' as math;
+
+import 'package:anime_flow/core/crawler/item/crawler_config_item.dart';
+import 'package:anime_flow/core/crawler/rule_api_level.dart';
 
 import 'package:anime_flow/features/settings/presentation/providers/setting_provider.dart';
 import 'package:anime_flow/features/source/application/providers/plugin_provider.dart';
@@ -33,10 +37,205 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
   /// 串行化排序写入。
   Future<void> _orderWriteChain = Future<void>.value();
 
+  bool _showSearch = false;
+  String _query = '';
+  final TextEditingController _searchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _sourceRepository = ref.read(sourceRepositoryProvider);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// 批量导入：剪切板里可以是一个插件对象、一个数组，或 {"plugins": [...]}。
+  ///
+  /// 之所以做成批量，是因为公开规则库一次就是十几条，
+  /// 一条条粘会把「导入源」变成一件劝退的事。
+  Future<void> _importBatch() async {
+    final l10n = AppLocalizations.of(context);
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final controller = TextEditingController(text: clipboard?.text ?? '');
+    final input = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('批量导入源'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 360, maxWidth: 460),
+          child: TextField(
+            controller: controller,
+            minLines: 8,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+              hintText: '粘贴一个 JSON 数组，或 {"plugins": [ ... ]}',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('导入'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (input == null || input.trim().isEmpty || !mounted) return;
+
+    final List<dynamic> rawItems;
+    try {
+      final decoded = jsonDecode(input);
+      rawItems = switch (decoded) {
+        List<dynamic> value => value,
+        {'plugins': final List<dynamic> value} => value,
+        Map<String, dynamic> value => [value],
+        _ => throw const FormatException('需要一个对象或数组'),
+      };
+    } catch (e) {
+      NotificationToast.show('JSON 解析失败：$e', title: '导入失败');
+      return;
+    }
+
+    var imported = 0;
+    var overwritten = 0;
+    final failures = <String>[];
+    final existing = (await _sourceRepository.getSources())
+        .map((source) => source.name)
+        .toSet();
+
+    for (final item in rawItems) {
+      if (item is! Map) {
+        failures.add('有一项不是对象');
+        continue;
+      }
+      try {
+        final config = CrawlConfigItem.fromJson(
+          Map<String, dynamic>.from(item),
+        );
+        if (config.name.trim().isEmpty) {
+          failures.add('缺少 name');
+          continue;
+        }
+        if (!config.isRuleCompatible) {
+          failures.add('${config.name}：${RuleApiLevel.describe(config.api, ruleName: config.name)}');
+          continue;
+        }
+        final isUpdate = existing.contains(config.name);
+        await _sourceRepository.saveSource(config);
+        if (isUpdate) {
+          overwritten++;
+        } else {
+          imported++;
+          existing.add(config.name);
+        }
+      } catch (e) {
+        failures.add('${item['name'] ?? '未命名'}：$e');
+      }
+    }
+
+    if (!mounted) return;
+    ref.invalidate(sourceConfigsProvider);
+    final parts = <String>[
+      if (imported > 0) '新增 $imported',
+      if (overwritten > 0) '覆盖 $overwritten',
+      if (failures.isNotEmpty) '失败 ${failures.length}',
+    ];
+    NotificationToast.show(
+      [
+        parts.isEmpty ? '没有可导入的源' : parts.join(' · '),
+        if (failures.isNotEmpty) failures.take(3).join('；'),
+      ].join('\n'),
+      title: '批量导入完成',
+    );
+  }
+
+  /// 一键更新：把仓库里版本更高的源全部拉一遍。
+  Future<void> _updateAll() async {
+    final l10n = AppLocalizations.of(context);
+    final remote =
+        ref.read(pluginCatalogProvider).whenOrNull(data: (list) => list) ??
+            const <PluginCatalogItem>[];
+    if (remote.isEmpty) {
+      NotificationToast.show('仓库还没拉到，检查网络或源仓库地址', title: '无法更新');
+      return;
+    }
+    final locals = await _sourceRepository.getSources();
+    final localByName = {for (final source in locals) source.name: source};
+    final pending = [
+      for (final plugin in remote)
+        if (localByName[plugin.name] == null ||
+            Utils.compareVersionNumbers(
+                  plugin.version,
+                  localByName[plugin.name]!.version,
+                ) >
+                0)
+          plugin,
+    ];
+    if (!mounted) return;
+    if (pending.isEmpty) {
+      NotificationToast.show('全部已是最新版本', title: '无需更新');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('一键更新'),
+        content: Text(
+          '将更新 ${pending.length} 个源：\n'
+          '${pending.take(6).map((plugin) => plugin.name).join('、')}'
+          '${pending.length > 6 ? ' 等' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('开始更新'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    var ok = 0;
+    final failed = <String>[];
+    for (final plugin in pending) {
+      setState(() => _busyPluginNames.add(plugin.name));
+      try {
+        await _sourceRepository.updatePlugin(
+          pluginPath: plugin.path,
+          catalogVersion: plugin.version,
+        );
+        ok++;
+      } catch (e) {
+        failed.add(plugin.name);
+        LiggLogger().e('Plugins: 批量更新 ${plugin.name} 失败', error: e);
+      } finally {
+        if (mounted) setState(() => _busyPluginNames.remove(plugin.name));
+      }
+    }
+    if (!mounted) return;
+    ref.invalidate(sourceConfigsProvider);
+    NotificationToast.show(
+      failed.isEmpty ? '成功 $ok 个' : '成功 $ok 个，失败 ${failed.length} 个：${failed.take(3).join('、')}',
+      title: '一键更新完成',
+    );
   }
 
   Future<void> deleteDataSource(String name) async {
@@ -188,6 +387,32 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
                       automaticallyImplyLeading: !isWideScreen,
                       actions: [
                         IconButton(
+                          tooltip: _showSearch ? '收起搜索' : '搜索源',
+                          onPressed: () {
+                            setState(() {
+                              _showSearch = !_showSearch;
+                              if (!_showSearch) {
+                                _query = '';
+                                _searchController.clear();
+                              }
+                            });
+                          },
+                          icon: Icon(
+                            _showSearch ? Icons.search_off : Icons.search,
+                            size: 28,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '批量导入',
+                          onPressed: _importBatch,
+                          icon: const Icon(Icons.playlist_add, size: 28),
+                        ),
+                        IconButton(
+                          tooltip: '一键更新全部',
+                          onPressed: _busyPluginNames.isEmpty ? _updateAll : null,
+                          icon: const Icon(Icons.system_update_alt, size: 28),
+                        ),
+                        IconButton(
                           onPressed: () {
                             appNavigatorOf(context).openSettings<void>(
                                 destination:
@@ -210,11 +435,21 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
               body: sourceConfigs.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => Center(child: Text(error.toString())),
-                data: (dataSources) => LayoutBuilder(
-                  builder: (context, constraints) {
-                    final horizontal =
-                        math.max(10.0, (constraints.maxWidth - 1500.0) / 2);
-                    return ReorderableListView.builder(
+                data: (dataSources) {
+                  final keyword = _query.trim().toLowerCase();
+                  final filtered = keyword.isEmpty
+                      ? dataSources
+                      : [
+                          for (final source in dataSources)
+                            if (source.name.toLowerCase().contains(keyword) ||
+                                source.baseUrl.toLowerCase().contains(keyword))
+                              source,
+                        ];
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final horizontal =
+                          math.max(10.0, (constraints.maxWidth - 1500.0) / 2);
+                      final list = ReorderableListView.builder(
                       padding: (EdgeInsets.fromLTRB(
                         horizontal,
                         0,
@@ -224,11 +459,12 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
                           .add(EdgeInsets.only(
                               top: SettingsPageBuilder.topInsetOf(context)))
                           .resolve(Directionality.of(context)),
-                      itemCount: dataSources.length,
+                      itemCount: filtered.length,
                       buildDefaultDragHandles: false,
-                      onReorderItem: _onReorder,
+                      // 筛选状态下下标和真实顺序不一致，直接禁用拖动，避免排错。
+                      onReorderItem: _query.isEmpty ? _onReorder : (a, b) {},
                       itemBuilder: (context, index) {
-                        final data = dataSources[index];
+                        final data = filtered[index];
                         final remotePlugin = remotePluginsByName[data.name];
                         final hasUpdate = remotePlugin != null &&
                             Utils.compareVersionNumbers(
@@ -315,26 +551,49 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
                                   ),
                                   onPressed: () => deleteDataSource(data.name),
                                 ),
-                                GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () {},
-                                  child: ReorderableDragStartListener(
-                                    index: index,
-                                    child: const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(horizontal: 8),
-                                      child: Icon(Icons.drag_handle),
+                                if (_query.isEmpty)
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {},
+                                    child: ReorderableDragStartListener(
+                                      index: index,
+                                      child: const Padding(
+                                        padding:
+                                            EdgeInsets.symmetric(horizontal: 8),
+                                        child: Icon(Icons.drag_handle),
+                                      ),
                                     ),
                                   ),
-                                ),
                               ],
                             ),
                           ),
                         );
                       },
                     );
-                  },
-                ),
+                      return Column(
+                        children: [
+                          if (_showSearch)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                              child: TextField(
+                                controller: _searchController,
+                                autofocus: true,
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  prefixIcon: Icon(Icons.search),
+                                  hintText: '按名称或域名筛选',
+                                  border: OutlineInputBorder(),
+                                ),
+                                onChanged: (value) =>
+                                    setState(() => _query = value),
+                              ),
+                            ),
+                          Expanded(child: list),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ));
   }
