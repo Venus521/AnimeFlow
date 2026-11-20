@@ -1,5 +1,8 @@
 import 'package:anime_flow/core/logger/app_log.dart';
+import 'dart:async';
+
 import 'package:anime_flow/features/play/application/resume_trace.dart';
+import 'package:anime_flow/features/play/infrastructure/sync/webdav_sync.dart';
 import 'package:anime_flow/features/play/presentation/providers/play_history_provider.dart';
 import 'package:anime_flow/shared/navigation/app_navigator_provider.dart';
 import 'package:anime_flow/shared/navigation/args/info_route_extra.dart';
@@ -181,6 +184,96 @@ class _PlayRecordPageState extends ConsumerState<PlayRecordPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // 打开记录页时自动从自己的 WebDAV 合并一次；没配置就安静跳过。
+    if (WebDavConfig.load().isConfigured) {
+      unawaited(WebDavSync.instance.pull());
+    }
+  }
+
+  /// 配置并手动同步自己的 WebDAV。
+  ///
+  /// 只放一个几 KB 的 JSON，不涉及任何第三方账号，也不需要服务器。
+  Future<void> _openWebDavDialog() async {
+    final config = WebDavConfig.load();
+    final urlController = TextEditingController(text: config.url);
+    final userController = TextEditingController(text: config.username);
+    final passController = TextEditingController(text: config.password);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('WebDAV 同步'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(
+                  labelText: '目录地址',
+                  hintText: 'https://dav.jianguoyun.com/dav/AnimeFlow',
+                ),
+              ),
+              TextField(
+                controller: userController,
+                decoration: const InputDecoration(labelText: '账号'),
+              ),
+              TextField(
+                controller: passController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '应用密码'),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                '只存一个几 KB 的进度 JSON，不放视频、不放账号信息。'
+                '目录需要先在网盘里建好。',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await WebDavConfig(
+                url: urlController.text,
+                username: userController.text,
+                password: passController.text,
+              ).save();
+              final result = await WebDavSync.instance.push();
+              if (!dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+              NotificationToast.show(
+                result.message,
+                title: result.ok ? '已保存并上传' : '上传失败',
+              );
+            },
+            child: const Text('保存并上传'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final result = await WebDavSync.instance.pull();
+              if (!dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+              NotificationToast.show(
+                result.message,
+                title: result.ok ? '已从远端恢复' : '恢复失败',
+              );
+            },
+            child: const Text('从远端恢复'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     ref.listen(playHistoryProvider, (previous, next) {
@@ -193,6 +286,11 @@ class _PlayRecordPageState extends ConsumerState<PlayRecordPage> {
       appBar: AppBar(
         title: Text(l10n.playbackHistory),
         actions: [
+          IconButton(
+            tooltip: 'WebDAV 同步',
+            onPressed: _openWebDavDialog,
+            icon: const Icon(Icons.cloud_outlined),
+          ),
           IconButton(
             tooltip: '续播诊断',
             onPressed: _showResumeTrace,

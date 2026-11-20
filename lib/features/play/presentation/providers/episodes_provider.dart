@@ -2,6 +2,7 @@ import 'package:anime_flow/features/play/domain/play_session_actions.dart';
 import 'package:anime_flow/features/play/domain/episodes_data.dart';
 import 'package:anime_flow/features/play/application/episode_selection.dart';
 import 'package:anime_flow/features/play/application/resume_trace.dart';
+import 'package:anime_flow/features/play/infrastructure/history/hive_resume_store.dart';
 import 'package:anime_flow/features/play/presentation/providers/play_dependencies.dart';
 import 'package:anime_flow/features/play/presentation/providers/play_provider.dart';
 import 'package:anime_flow/features/subject_episodes/application/subject_episodes_provider.dart';
@@ -44,6 +45,7 @@ class Episodes extends _$Episodes implements EpisodeActions {
     final routeEpisodeId = requestedEpisodeId;
     final record =
         await ref.read(playHistoryServiceProvider).recordFor(subjectId);
+    final own = resumeStore.read(subjectId);
     if (!ref.mounted) return EpisodesData(subjectId: subjectId);
     ResumeTrace.instance.add(
       '②记录',
@@ -52,10 +54,23 @@ class Episodes extends _$Episodes implements EpisodeActions {
           : 'id=${record.episodeId} sort=${record.episodeSort} '
               'pos=${record.position}s 源=${record.sourceWebsite ?? "未存"}',
     );
-    if (record != null && routeEpisodeId == null) {
-      // 路由什么都没说（大播放按钮等入口）：记录说哪一集就是哪一集。
-      if (record.episodeId > 0) requestedEpisodeId = record.episodeId;
-      if (record.episodeSort > 0) requestedEpisodeSort = record.episodeSort;
+    if (own != null) {
+      ResumeTrace.instance.add(
+        '②自有',
+        'id=${own.episodeId} sort=${own.episodeSort} '
+            'pos=${own.positionSeconds}s 源=${own.website ?? "未记录"}',
+      );
+    }
+    if (routeEpisodeId == null) {
+      // 自有记录优先：它不参与作者服务器同步，不会被远端旧数据覆盖，
+      // 也不会被「封面/时长为空」这类守卫丢掉。PlayHistory 只作后备。
+      if (own != null && own.episodeId > 0) {
+        requestedEpisodeId = own.episodeId;
+        if (own.episodeSort > 0) requestedEpisodeSort = own.episodeSort;
+      } else if (record != null) {
+        if (record.episodeId > 0) requestedEpisodeId = record.episodeId;
+        if (record.episodeSort > 0) requestedEpisodeSort = record.episodeSort;
+      }
     }
 
     selection.request(subjectId, requestedEpisodeId);
@@ -79,18 +94,21 @@ class Episodes extends _$Episodes implements EpisodeActions {
     // 选集会退成「没有集」= episodeId 0，播放页随后自己退回第一集，
     // 于是把 1 写进记录 —— 这就是「永远显示 01、续播永远失效」的自我强化环。
     // 这里改用记录里的集数再定位一次，集数比集 ID 耐得住剧集表变动。
-    if (data.episodeId <= 0 && record != null && record.episodeSort > 0) {
+    final fallbackSort = own != null && own.episodeSort > 0
+        ? own.episodeSort
+        : (record != null && record.episodeSort > 0 ? record.episodeSort : 0);
+    if (data.episodeId <= 0 && fallbackSort > 0) {
       final byRecordSort = selection.onlineEpisodes(
         subjectId,
         subjectEpisodes,
         null,
         null,
-        continueEpisodeSort: record.episodeSort,
+        continueEpisodeSort: fallbackSort,
       );
       if (byRecordSort.episodeId > 0) data = byRecordSort;
       ResumeTrace.instance.add(
         '③选集',
-        '路由集 ID 没找到 → 按记录集数 ${record.episodeSort} 重试 → '
+        '路由集 ID 没找到 → 按记录集数 $fallbackSort 重试 → '
             'id=${byRecordSort.episodeId}',
       );
     }

@@ -2,7 +2,10 @@ import 'package:anime_flow/features/play/domain/play_history_repository.dart';
 import 'dart:async';
 
 import 'package:anime_flow/core/logger/app_log.dart';
+import 'package:anime_flow/features/play/application/resume_store.dart';
 import 'package:anime_flow/features/play/application/resume_trace.dart';
+import 'package:anime_flow/features/play/infrastructure/history/hive_resume_store.dart';
+import 'package:anime_flow/features/play/infrastructure/sync/webdav_sync.dart';
 import 'package:anime_flow/shared/models/player/play/play_history_event_type.dart';
 
 typedef SetEpisodeWatchedCallback = void Function({
@@ -163,6 +166,24 @@ class PlaybackProgressManager {
       'id=$episodeId sort=$episodeSort pos=${savedPosition.inSeconds}s '
           'dur=${duration.inSeconds}s 源=${sourceWebsite ?? "未记录"}',
     );
+    // 同时写一份「自有」记录：不参与作者服务器同步，不会被远端覆盖，
+    // 也不会被上面那条守卫丢弃。续播读的是这一份。
+    unawaited(
+      resumeStore.write(
+        ResumeEntry(
+          subjectId: subjectId,
+          episodeId: episodeId,
+          episodeSort: episodeSort,
+          positionSeconds: savedPosition.inSeconds,
+          durationSeconds: duration.inSeconds,
+          website: sourceWebsite,
+          updatedAt: DateTime.now(),
+        ),
+      ),
+    );
+    if (WebDavConfig.load().isConfigured) {
+      unawaited(WebDavSync.instance.pushThrottled());
+    }
     final playHistory = PlaybackRecord(
       subjectId: subjectId,
       subjectName: subjectName!,

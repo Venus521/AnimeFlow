@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:anime_flow/core/video_source/application/chapter_collection_service.dart';
 import 'package:anime_flow/core/video_source/application/search_result_rank_service.dart';
 import 'package:anime_flow/features/play/domain/play_request.dart';
+import 'package:anime_flow/features/play/application/resume_trace.dart';
+import 'package:anime_flow/features/play/infrastructure/history/hive_resume_store.dart';
 import 'package:anime_flow/features/play/domain/local_video_files.dart';
 import 'package:anime_flow/features/play/domain/play_source_selection.dart';
 import 'package:anime_flow/core/utils/source_url.dart' show resolveSourceUrl;
@@ -120,9 +122,16 @@ mixin VideoSourceWorkflow {
     // 不同站点的片头、剪辑和总时长可能不同，换源之后同一个秒数往往对不上，
     // 表现就是「续播了但看起来没续播」。
     if (!keepSelection) {
-      final preferredWebsite = await history.resumeSource(
-          subject.subjectId, episode.id,
-          episodeSort: episode.sort);
+      // 自有记录里的站点优先：它是播放时直接写下来的，不经过云同步，
+      // 不会被远端旧数据把站点冲掉。
+      final own = resumeStore.read(subject.subjectId);
+      final ownWebsite =
+          own != null && own.matches(episodeId: episode.id, episodeSort: episode.sort)
+              ? own.website
+              : null;
+      final preferredWebsite = ownWebsite ??
+          await history.resumeSource(subject.subjectId, episode.id,
+              episodeSort: episode.sort);
       if (!active || _searchSessionId != sessionId) return;
       if (preferredWebsite != null) {
         _preferredAutoSelectWebsiteName = preferredWebsite;
@@ -782,9 +791,22 @@ mixin VideoSourceWorkflow {
     final cancellation = _resolution = VideoSourceCancellation();
     setPlaybackPhase(PlaybackPhase.resolving,
         notice: PlaybackNotice.resolvingSource);
-    final offset = await history.resumePosition(
-        selectedSubject.subjectId, selectedEpisode.id,
-        episodeSort: selectedEpisode.sort);
+    // 自有记录优先：它是播放时直接写下来的秒数，最接近「用户真正停在哪」。
+    final own = resumeStore.read(selectedSubject.subjectId);
+    final ownOffset = own != null &&
+            own.matches(
+                episodeId: selectedEpisode.id, episodeSort: selectedEpisode.sort)
+        ? own.positionSeconds
+        : 0;
+    final offset = ownOffset > 0
+        ? ownOffset
+        : await history.resumePosition(
+            selectedSubject.subjectId, selectedEpisode.id,
+            episodeSort: selectedEpisode.sort);
+    ResumeTrace.instance.add(
+      '⑥读取',
+      '起播偏移 自有=${ownOffset}s → 采用 ${offset}s',
+    );
     if (!isCurrent()) return null;
     final source = await resolver.resolve(VideoSourceResolveRequest(
       episodeUrl: url,
