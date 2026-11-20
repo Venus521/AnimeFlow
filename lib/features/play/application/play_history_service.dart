@@ -1,4 +1,5 @@
 import 'package:anime_flow/core/async/serial_operation_queue.dart';
+import 'package:anime_flow/features/play/application/resume_trace.dart';
 import 'package:anime_flow/features/play/domain/play_history_repository.dart';
 
 class PlayHistoryService {
@@ -27,7 +28,10 @@ class PlayHistoryService {
     num? episodeSort,
   }) async {
     final record = await repository.getBySubjectId(subjectId);
-    if (record == null) return 0;
+    if (record == null) {
+      ResumeTrace.instance.add('⑥读取', 'subject=$subjectId 无记录 → 0');
+      return 0;
+    }
     // 集 ID 失效时按集数兜底，避免「明明看过第 N 集却从第一集开始」。
     // 集数为 0 的记录不可信（旧数据/本地文件），不能拿来比对，
     // 否则会误判成同一集，把别的集进度套过来。
@@ -35,7 +39,14 @@ class PlayHistoryService {
         (episodeSort != null &&
             episodeSort > 0 &&
             record.episodeSort == episodeSort);
-    return sameEpisode && record.position > 0 ? record.position : 0;
+    final value = sameEpisode && record.position > 0 ? record.position : 0;
+    ResumeTrace.instance.add(
+      '⑥读取',
+      '要 id=$episodeId sort=$episodeSort ｜ 记录 id=${record.episodeId} '
+          'sort=${record.episodeSort} pos=${record.position}s ｜ '
+          '匹配=$sameEpisode → $value',
+    );
+    return value;
   }
 
   /// 上次播放这一集使用的数据源名称。

@@ -15,6 +15,7 @@ import 'package:anime_flow/features/play/domain/player/playback_phase.dart';
 import 'package:anime_flow/features/play/domain/player/player_engine.dart';
 import 'package:anime_flow/features/play/domain/player/upscale_preset.dart';
 import 'package:anime_flow/features/play/application/playback_coordinator.dart';
+import 'package:anime_flow/features/play/application/resume_trace.dart';
 import 'package:anime_flow/features/play/domain/play_request.dart';
 import 'package:anime_flow/features/play/domain/play_state.dart';
 
@@ -392,6 +393,11 @@ class PlaySession {
         alias: alias,
         isLocalPlayback: isLocalPlayback,
         sourceWebsite: state.sourceWebsite,
+      );
+      ResumeTrace.instance.add(
+        '④起播',
+        'id=$episodeId sort=${episodeSort > 0 ? episodeSort : episode} '
+            '偏移=${state.offset}s 源=${state.sourceWebsite ?? "未记录"}',
       );
       await playbackCoordinator.open(
         state.source,

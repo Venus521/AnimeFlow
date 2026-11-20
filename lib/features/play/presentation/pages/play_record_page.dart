@@ -1,4 +1,5 @@
 import 'package:anime_flow/core/logger/app_log.dart';
+import 'package:anime_flow/features/play/application/resume_trace.dart';
 import 'package:anime_flow/features/play/presentation/providers/play_history_provider.dart';
 import 'package:anime_flow/shared/navigation/app_navigator_provider.dart';
 import 'package:anime_flow/shared/navigation/args/info_route_extra.dart';
@@ -8,6 +9,7 @@ import 'package:anime_flow/core/utils/playback_format.dart';
 import 'package:anime_flow/shared/widgets/animation_network_image.dart';
 import 'package:anime_flow/shared/widgets/notification_toast.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:anime_flow/app/localization/app_localizations.dart';
 
@@ -140,6 +142,44 @@ class _PlayRecordPageState extends ConsumerState<PlayRecordPage> {
     }
   }
 
+  /// 把续播链路的运行时记录摊开给人看：路由传了什么、选到第几集、
+  /// 写进记录什么、读回来什么。不联网、不上传，只在本机内存里。
+  Future<void> _showResumeTrace() async {
+    final text = ResumeTrace.instance.dump();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('续播诊断'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text,
+              style: const TextStyle(fontSize: 12, height: 1.6),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: text));
+              Navigator.of(dialogContext).pop();
+              NotificationToast.show('已复制，直接粘贴发给我', title: '提示');
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(
+            onPressed: () {
+              ResumeTrace.instance.clear();
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -153,6 +193,11 @@ class _PlayRecordPageState extends ConsumerState<PlayRecordPage> {
       appBar: AppBar(
         title: Text(l10n.playbackHistory),
         actions: [
+          IconButton(
+            tooltip: '续播诊断',
+            onPressed: _showResumeTrace,
+            icon: const Icon(Icons.bug_report_outlined),
+          ),
           IconButton(
             tooltip: _isSyncing ? l10n.syncInProgress : l10n.manualSync,
             onPressed: _isSyncing ? null : _confirmAndSyncPendingRecords,

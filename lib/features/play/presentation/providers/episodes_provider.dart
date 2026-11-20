@@ -1,6 +1,7 @@
 import 'package:anime_flow/features/play/domain/play_session_actions.dart';
 import 'package:anime_flow/features/play/domain/episodes_data.dart';
 import 'package:anime_flow/features/play/application/episode_selection.dart';
+import 'package:anime_flow/features/play/application/resume_trace.dart';
 import 'package:anime_flow/features/play/presentation/providers/play_dependencies.dart';
 import 'package:anime_flow/features/play/presentation/providers/play_provider.dart';
 import 'package:anime_flow/features/subject_episodes/application/subject_episodes_provider.dart';
@@ -30,6 +31,10 @@ class Episodes extends _$Episodes implements EpisodeActions {
           ]);
     }
 
+    ResumeTrace.instance.add(
+      '①路由',
+      'subject=$subjectId id=$requestedEpisodeId sort=$requestedEpisodeSort',
+    );
     // 路由没带集数时（详情页大播放按钮、首页「继续观看」卡片等入口），
     // 回落到本地播放记录。不回落到这里的话，下面会一路退成
     // 「没指定剧集 → 默认第一集」，表现就是每次进来都从第一集开始。
@@ -40,6 +45,13 @@ class Episodes extends _$Episodes implements EpisodeActions {
     final record =
         await ref.read(playHistoryServiceProvider).recordFor(subjectId);
     if (!ref.mounted) return EpisodesData(subjectId: subjectId);
+    ResumeTrace.instance.add(
+      '②记录',
+      record == null
+          ? '本地无记录'
+          : 'id=${record.episodeId} sort=${record.episodeSort} '
+              'pos=${record.position}s 源=${record.sourceWebsite ?? "未存"}',
+    );
     if (record != null && routeEpisodeId == null) {
       // 路由什么都没说（大播放按钮等入口）：记录说哪一集就是哪一集。
       if (record.episodeId > 0) requestedEpisodeId = record.episodeId;
@@ -76,13 +88,24 @@ class Episodes extends _$Episodes implements EpisodeActions {
         continueEpisodeSort: record.episodeSort,
       );
       if (byRecordSort.episodeId > 0) data = byRecordSort;
+      ResumeTrace.instance.add(
+        '③选集',
+        '路由集 ID 没找到 → 按记录集数 ${record.episodeSort} 重试 → '
+            'id=${byRecordSort.episodeId}',
+      );
     }
 
     // 二级兜底：仍然没有有效集，退回「下一集未看 / 第一集」，
     // 至少保证播放页拿得到一个真实存在的集，不会再写进 0 或空值。
     if (data.episodeId <= 0) {
       data = selection.onlineEpisodes(subjectId, subjectEpisodes, null, null);
+      ResumeTrace.instance.add('③选集', '记录集数也对不上 → 退回下一集未看/第一集');
     }
+    ResumeTrace.instance.add(
+      '③选集',
+      '最终 id=${data.episodeId} sort=${data.episodeSort} '
+          'index=${data.episodeIndex}',
+    );
     return data;
   }
 

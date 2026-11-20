@@ -2,6 +2,7 @@ import 'package:anime_flow/features/play/domain/play_history_repository.dart';
 import 'dart:async';
 
 import 'package:anime_flow/core/logger/app_log.dart';
+import 'package:anime_flow/features/play/application/resume_trace.dart';
 import 'package:anime_flow/shared/models/player/play/play_history_event_type.dart';
 
 typedef SetEpisodeWatchedCallback = void Function({
@@ -138,6 +139,11 @@ class PlaybackProgressManager {
         subjectId <= 0 ||
         episodeId <= 0 ||
         subjectName == null) {
+      ResumeTrace.instance.add(
+        '⑤落盘',
+        '被守卫拦下 subject=$subjectId id=$episodeId '
+            'dur=${duration.inSeconds}s name=${subjectName ?? "null"}',
+      );
       return;
     }
     final savedPosition = position ?? pendingSeekPosition ?? this.position;
@@ -152,6 +158,11 @@ class PlaybackProgressManager {
         effectiveEventType != PlayHistoryEventType.forceOverwrite) {
       return;
     }
+    ResumeTrace.instance.add(
+      '⑤落盘',
+      'id=$episodeId sort=$episodeSort pos=${savedPosition.inSeconds}s '
+          'dur=${duration.inSeconds}s 源=${sourceWebsite ?? "未记录"}',
+    );
     final playHistory = PlaybackRecord(
       subjectId: subjectId,
       subjectName: subjectName!,
